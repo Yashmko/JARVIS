@@ -1632,11 +1632,3 @@ See [LICENSE](LICENSE) for full details.
 
 If this project helped you or taught you something, consider giving it a ⭐
 
-</div>
-```
-git add README.md
-git commit -m "Updated GitHub username in README"
-git push
-```
-
-Replace `PUT_YOUR_ACTUAL_USERNAME_HERE` with your real username in that command.

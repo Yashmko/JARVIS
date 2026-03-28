@@ -1605,6 +1605,21 @@ Yes. Add the API key to `.env` and configure the provider in `config/settings.py
 
 ## 📄 License
 
+**Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)**
+
+You are free to:
+- ✅ Use this project
+- ✅ Modify this project
+- ✅ Share this project
+- ✅ Build upon this project
+
+**BUT:**
+- ❌ Cannot sell it (commercial use prohibited)
+- ✅ Must give credit to the original author
+- ✅ Share any modifications under the same license
+
+See [LICENSE](LICENSE) for full details.
+
 **MIT** — use it, modify it, sell it, build on it. No restrictions.
 
 ---

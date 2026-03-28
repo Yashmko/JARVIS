@@ -14,7 +14,8 @@
 **Type natural language → Routes to best skill out of 1,320 → Executes with live streaming → Remembers everything**
 
 [![Python](https://img.shields.io/badge/Python-3.14-blue?logo=python&logoColor=white)](https://python.org)
-[![Skills](https://img.shields.io/badge/Skills-1,320-purple)](.)
+[![Skills](https://img.shields.io/badge/Skills-1,320-purple)](https://github.com/Yashmko/JARVIS)
+[![GitHub stars](https://img.shields.io/github/stars/Yashmko/JARVIS?style=social)](https://github.com/Yashmko/JARVIS)
 [![LLMs](https://img.shields.io/badge/LLM_Providers-7_Free-green)](.)
 [![RAM](https://img.shields.io/badge/RAM-72MB-orange)](.)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)

@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+memory/history.db
+memory/usage.log
+memory/router.log
+memory/bounty_scope.json
+memory/bounty_findings.json
+backups/
+reports/
+*.pyc
+_tmp_skills/
+skills/

@@ -1,0 +1,1 @@
+{"name":"Deploy to Cloud","description":"Containerise and deploy to production","triggers":["deploy to production","ship to cloud","containerise and deploy","go live","push to prod"],"steps":[{"skill":"docker-expert","label":"Containerise"},{"skill":"aws-serverless","label":"AWS setup"},{"skill":"vercel-deployment","label":"Deploy"},{"skill":"observability","label":"Monitor"}]}

@@ -1,0 +1,22 @@
+{
+  "name": "Custom: brainstorming-architecture-react-best-practices",
+  "description": "Custom chain: brainstorming \u2192 architecture \u2192 react-best-practices",
+  "triggers": [
+    "run chain brainstorming-architecture-react-best-practices",
+    "brainstorming-architecture-react-best-practices"
+  ],
+  "steps": [
+    {
+      "skill": "brainstorming",
+      "label": "Brainstorming"
+    },
+    {
+      "skill": "architecture",
+      "label": "Architecture"
+    },
+    {
+      "skill": "react-best-practices",
+      "label": "React Best Practices"
+    }
+  ]
+}

@@ -1,12 +1,5 @@
 # JARVIS v2 — Autonomous AI Agent OS
 
-
-
-
-
-```markdown
-<div align="center">
-
 ```
      ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗
      ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝

@@ -1,3 +1,7 @@
+
+def is_multi_command(q: str) -> bool:
+    return q.strip().lower().startswith("multi:")
+
 """
 JARVIS v2 — main.py (FINAL)
 All 30 features. Complete autonomous AI agent OS.
@@ -26,9 +30,16 @@ from tools.automation import AutomationTools, is_automation_command
 from tools.plugin_loader import PluginManager
 from tools.maintenance import MaintenanceTools, is_maintenance_command
 from tools.dashboard import Dashboard
-from tools.multi_agent import MultiAgent, is_multi_command
+from tools.multi_agent import MultiAgent
 from tools.browser_auto import BrowserAutomation, is_browser_command
 from tools.autonomous import AutonomousAgent, is_auto_command
+from tools.shell_executor import ShellExecutor, is_raw_shell_command
+from tools.bounty_runner import BountyRunner
+from tools.target_context import get_target_context
+from tools.output_validator import safe_llm_response, is_hallucinated
+from tools.safe_json import safe_parse_json
+
+
 
 console = Console()
 settings = Settings()
@@ -246,7 +257,7 @@ async def main_loop():
     bounty=BountyToolkit(console,brain=brain); report_gen=ReportGenerator(console,memory)
     automation=AutomationTools(console); plugins=PluginManager(console,brain=brain,memory=memory)
     maint=MaintenanceTools(console,memory=memory); dash=Dashboard(console,memory,settings)
-    multi=MultiAgent(console,brain,router,memory,settings,persona,stream_to_terminal,build_messages)
+    multi=MultiAgent(console)
     browser=BrowserAutomation(console)
     autonomous=AutonomousAgent(console,brain,sys_ctrl,memory,settings,persona)
 
@@ -405,6 +416,12 @@ async def main_loop():
             memory.add("user",query,skill="system-control",outcome="success" if result.success else "error"); continue
 
         # Local tools
+        if is_raw_shell_command(query):
+            _shell = ShellExecutor(console)
+            _sr = await _shell.execute(query)
+            if _sr.output and _sr.output != "(no output)":
+                memory.add("user", query, skill="shell", outcome="success")
+            continue
         if is_local_command(query):
             console.print(); result=await local_tools.execute(query)
             if result.error: console.print(Text(f"\n  ✗ {result.error}\n",style="bold #ef4444"))
@@ -412,6 +429,57 @@ async def main_loop():
 
         # Classify + route
         console.print()
+        # ── BOUNTY RECON (real tools, no LLM) ──────────────────
+        _ql = query.lower().strip()
+        _bounty_triggers = (
+            "bounty recon", "bug bounty", "real recon",
+            "full recon", "start recon",
+        )
+        _bounty_exact = (
+            "security audit", "pentest", "do a security audit",
+            "do security audit", "do a security audit on the target",
+        )
+        if (any(_ql.startswith(t) for t in _bounty_triggers) or
+                any(_ql == t or _ql.startswith(t + " ") for t in _bounty_exact)):
+            _tctx2 = get_target_context()
+            _bt = _tctx2.get_target()
+            import re as _re2
+            _dm2 = _re2.search(
+                r"[\w\-]+\.(?:com|org|net|io|co|app|dev|gov|edu|uk)",
+                query
+            )
+            if _dm2:
+                _bt = _dm2.group(0)
+                _tctx2.set_target(_bt)
+            if not _bt:
+                console.print("  [bold #f59e0b]Set a target first: target example.com[/bold #f59e0b]\n")
+            else:
+                _runner = BountyRunner(console)
+                await _runner.run_full_recon(_bt)
+                memory.add("user", query, skill="bounty-runner", outcome="success")
+            continue
+
+        # ── RAW SHELL BYPASS ──────────────────────────────────
+
+        # ── TARGET CONTEXT ────────────────────────────────────
+        import re as _re
+        _tctx = get_target_context()
+        _dm = _re.search(
+            r"\b([\w\-]+\.(?:com|org|net|io|co|app|dev|gov|edu|uk|de|fr))\b",
+            query
+        )
+        if _dm and "example.com" not in _dm.group(1):
+            _tctx.set_target(_dm.group(1))
+        if query.lower().startswith("target "):
+            _nt = query.split(" ", 1)[1].strip()
+            _tctx.set_target(_nt)
+            console.print(f"  [bold #10b981]✓ Target set: {_nt}[/bold #10b981]\n")
+            continue
+        if query.lower() in ("target", "show target"):
+            console.print(f"  {_tctx.show()}\n")
+            continue
+        query = _tctx.inject_into_query(query)
+
         with console.status("[dim]  thinking...[/dim]",spinner="dots"):
             try: cls=await brain.classify(query); hint=cls.get("category_hint","general")
             except: hint="general"
@@ -430,6 +498,11 @@ async def main_loop():
                 msgs=build_messages(q_ctx,memory,persona,skill=skill,settings=settings,
                                    workflow_step=label,step_number=i,total_steps=len(wf["steps"]))
                 t0=time.time(); out=await stream_to_terminal(msgs,brain)
+                # Hallucination guard
+                _validated=safe_llm_response(out)
+                if _validated != out:
+                    console.print(f"\n  [bold #f59e0b]{_validated}[/bold #f59e0b]\n")
+                    out=_validated
                 ms=int((time.time()-t0)*1000); carry=out; show_step_done(True,label,ms)
             console.print(f"\n  [bold #10b981]✓ Workflow complete[/bold #10b981]\n")
             last_output=carry; last_skill=wf["name"]
@@ -440,6 +513,11 @@ async def main_loop():
         else: console.print("  [dim]no match — answering directly[/dim]\n")
         msgs=build_messages(query,memory,persona,skill=match,settings=settings)
         t0=time.time(); out=await stream_to_terminal(msgs,brain)
+        # Hallucination guard
+        _validated=safe_llm_response(out)
+        if _validated != out:
+            console.print(f"\n  [bold #f59e0b]{_validated}[/bold #f59e0b]\n")
+            out=_validated
         ms=int((time.time()-t0)*1000)
         last_output=out; last_skill=match["name"] if match else None
         console.print(f"\n  [dim]{ms}ms{'  ·  '+match['name'] if match else ''}[/dim]\n")
@@ -449,3 +527,8 @@ async def main_loop():
 if __name__=="__main__":
     try: asyncio.run(main_loop())
     except KeyboardInterrupt: console.print("\n  [dim]interrupted.[/dim]\n"); sys.exit(0)
+
+# ═══════════════════════════════════════════════════
+# JARVIS BUG FIXES — appended patch
+# Apply at bottom of main_loop() dispatch chain
+# ═══════════════════════════════════════════════════

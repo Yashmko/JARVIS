@@ -1,0 +1,468 @@
+===== JARVIS PROJECT STRUCTURE =====
+-p ~
+JARVIS_FULL_INFO.txt
+LICENSE
+README.md
+README.md.bak
+__pycache__
+api
+api_docs.txt
+api_subdomains.txt
+backups
+brain.py
+config
+context_injector.py
+executor.py
+logs
+main.py
+memory
+plugins
+reports
+router.py
+skills
+subdomains.txt
+subs.txt
+test_brain.py
+test_memory.py
+test_router.py
+tests
+tools
+workflows
+
+===== TOOLS =====
+__init__.py
+__pycache__
+agent_planner.py
+auto_improve.py
+automation.py
+autonomous.py
+autonomous_safe.py
+bounty.py
+bounty_runner.py
+browser_auto.py
+dashboard.py
+gen_manifests.py
+local_tools.py
+maintenance.py
+multi_agent.py
+output_validator.py
+plugin_loader.py
+report_gen.py
+safe_json.py
+shell_executor.py
+skill_creator.py
+system_control.py
+target_context.py
+telegram_bot.py
+
+===== WORKFLOWS =====
+__init__.py
+bug_bounty.json
+bug_bounty_real.json
+build_ai_agent.json
+custom_brainstorming-architecture-react-best-practices.json
+custom_vulnerability-scanner-security-auditor-brainstorming.json
+deploy_cloud.json
+saas_mvp.json
+security_audit.json
+
+===== CONFIG =====
+__init__.py
+__pycache__
+aliases.json
+persona.md
+profiles.py
+settings.py
+
+===== MEMORY =====
+__init__.py
+__pycache__
+bounty_scope.json
+history.db
+memory.py
+router.log
+target_context.json
+usage.log
+
+===== MAIN.PY (FIRST 120 LINES) =====
+"""
+JARVIS v2 — main.py (FINAL)
+All 30 features. Complete autonomous AI agent OS.
+"""
+import asyncio,sys,time,argparse
+from rich.console import Console
+from rich.text import Text
+from rich.table import Table
+from rich.align import Align
+from rich.rule import Rule
+
+sys.path.insert(0, ".")
+from brain import BrainClient
+from router import Router
+from executor import ExecutionEngine
+from memory.memory import Memory
+from context_injector import build_messages, MODE_PROMPTS
+from config.settings import Settings
+from config.profiles import get_profile, list_profiles, PROFILES
+from tools.system_control import SystemController, is_sys_command
+from tools.local_tools import LocalTools, is_local_command
+from tools.skill_creator import SkillCreator, is_skill_create
+from tools.bounty import BountyToolkit, is_bounty_command
+from tools.report_gen import ReportGenerator, is_export_command
+from tools.automation import AutomationTools, is_automation_command
+from tools.plugin_loader import PluginManager
+from tools.maintenance import MaintenanceTools, is_maintenance_command
+from tools.dashboard import Dashboard
+from tools.multi_agent import MultiAgent, is_multi_command
+from tools.browser_auto import BrowserAutomation, is_browser_command
+from tools.autonomous import AutonomousAgent, is_auto_command
+from tools.shell_executor import ShellExecutor, is_raw_shell_command
+from tools.bounty_runner import BountyRunner
+from tools.target_context import get_target_context
+from tools.output_validator import safe_llm_response, is_hallucinated
+from tools.safe_json import safe_parse_json
+
+
+
+console = Console()
+settings = Settings()
+
+BANNER = r"""
+     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗
+     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝
+     ██║███████║██████╔╝██║   ██║██║███████╗
+██   ██║██╔══██║██╔══██╗╚██╗ ██╔╝██║╚════██║
+╚█████╔╝██║  ██║██║  ██║ ╚████╔╝ ██║███████║
+ ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝"""
+
+GRADIENT = ["#4c1d95","#5b21b6","#6d28d9","#7c3aed","#8b5cf6","#a855f7","#c026d3"]
+CAT_COLORS = {"security":"#ef4444","architecture":"#8b5cf6","data-ai":"#3b82f6",
+    "development":"#10b981","infrastructure":"#f59e0b","testing":"#14b8a6",
+    "workflow":"#f97316","business":"#ec4899","general":"#94a3b8"}
+
+last_output = ""
+last_skill = None
+
+def print_banner(pname="default"):
+    console.clear()
+    art = Text()
+    for i, line in enumerate(BANNER.strip("\n").splitlines()):
+        art.append(line+"\n", style=f"bold {GRADIENT[min(i,len(GRADIENT)-1)]}")
+    console.print(Align.center(art))
+    b = Text()
+    b.append("  v2.0 FINAL ", style="bold #f8fafc on #6d28d9")
+    if pname != "default": b.append(f"  {pname.upper()} ", style="bold #f8fafc on #ef4444")
+    b.append("  7 LLMs · 1,323 SKILLS · AUTONOMOUS · BOUNTY · PLUGINS", style="dim #a78bfa")
+    console.print(Align.center(b))
+    console.print()
+    prov = Text()
+    for n,k in [("groq",settings.GROQ_API_KEY),("cerebras",settings.CEREBRAS_API_KEY),
+                ("gemini",settings.GEMINI_API_KEY),("together",settings.TOGETHER_API_KEY),
+                ("mistral",settings.MISTRAL_API_KEY),("openrouter",settings.OPENROUTER_API_KEY),
+                ("hf",settings.HF_API_KEY)]:
+        prov.append(f"  {'●' if k else '○'} {n}", style="#10b981" if k else "#374151")
+    console.print(Align.center(prov))
+    console.print()
+    bar = Text()
+    for c in ["help","auto: <task>","bounty recon <d>","multi: <task>","dashboard","exit"]:
+        bar.append(f"  {c}  ", style="#5eead4"); bar.append("│", style="dim #374151")
+    console.print(Align.center(bar))
+    console.print(Rule(style="dim #1f2937"))
+    console.print()
+
+async def boot_systems(router, memory, pcfg, plugins):
+    mods = [
+        ("brain.py",       "7 providers · fallback · streaming"),
+        ("router.py",      f"fuzzy · {len(router.skills)} skills"),
+        ("memory.py",      f"WAL SQLite · profile: {memory.get_profile()}"),
+        ("executor.py",    "action mode · clean stream"),
+        ("bounty.py",      "recon · headers · nuclei · report"),
+        ("autonomous.py",  "self-executing agent loop"),
+        ("multi_agent.py", "split tasks into sub-agents"),
+        ("browser_auto.py","scrape · monitor · download"),
+        ("automation.py",  "queue · cron · git · clipboard"),
+        ("plugins/",       f"{len(plugins.plugins)} plugin commands"),
+        ("telegram_bot.py","remote control (separate process)"),
+        ("mcp.py",         "Claude/Cursor/VSCode integration"),
+    ]
+    for n,d in mods:
+        t = Text(); t.append("  ▸ ", style="bold #f59e0b")
+        t.append(f"{n:<20}", style="#8b5cf6"); t.append(d, style="dim #4b5563")
+        console.print(t); await asyncio.sleep(0.02)
+    console.print()
+    mode = memory.kv_get("mode",pcfg.get("mode","act"))
+    console.print(Text(f"  ✓ ALL SYSTEMS ONLINE  — {len(router.skills)} skills · mode: {mode}",
+                       style="bold #10b981"))
+    console.print()
+
+def show_skill_match(m):
+    c = CAT_COLORS.get(m.get("category","general"),"#94a3b8")
+    console.print(Text(f"\n  ⚡ {m['name']}  [{m.get('category','')}]  {m.get('score',0):.0%}",style=f"bold {c}"))
+    console.print()
+
+def show_wf_start(wf):
+    console.print()
+    console.print(Text(f"  🔗 WORKFLOW  {wf['name']}  ·  {len(wf['steps'])} steps", style="bold #a78bfa"))
+    for i,s in enumerate(wf["steps"],1): console.print(f"  [dim]  {i}. {s.get('label',s['skill'])}[/dim]")
+    console.print()
+
+===== ROUTER.PY =====
+"""
+JARVIS v2 — router.py (Phase A upgrade)
+
+Enhanced keyword router with:
+- Fuzzy matching (typo tolerance)
+- Phrase weighting (multi-word matches score higher)
+- Category boost from classify()
+- Alias expansion
+- Beginner-friendly (short queries work)
+"""
+import json
+import math
+import re
+import logging
+from pathlib import Path
+from collections import defaultdict
+
+log = logging.getLogger(__name__)
+
+
+def _tokenize(text: str) -> list[str]:
+    text = text.lower()
+    text = re.sub(r'[^a-z0-9\s\-]', ' ', text)
+    return [t for t in text.split() if len(t) > 1]
+
+
+def _fuzzy_match(word: str, target: str, max_dist: int = 1) -> bool:
+    """Simple Levenshtein distance check for typo tolerance."""
+    if word == target:
+        return True
+    if abs(len(word) - len(target)) > max_dist:
+        return False
+    if len(word) < 3 or len(target) < 3:
+        return False
+
+    # Check if one is substring of other
+    if word in target or target in word:
+        return True
+
+    # Simple edit distance (optimized for single edits)
+    if len(word) == len(target):
+        diffs = sum(1 for a, b in zip(word, target) if a != b)
+        return diffs <= max_dist
+
+    # Check transposition
+    if len(word) == len(target):
+        for i in range(len(word) - 1):
+            swapped = list(word)
+            swapped[i], swapped[i+1] = swapped[i+1], swapped[i]
+            if "".join(swapped) == target:
+                return True
+
+    return False
+
+
+class Router:
+    THRESHOLD = 0.08  # Lower threshold for fuzzy matching
+
+    def __init__(self, settings):
+        self.settings = settings
+        self.skills: list = []
+        self.aliases: dict = self._load_aliases()
+        self._idf: dict = {}
+        self._docs: list = []
+        self._skill_tokens_cache: list = []
+        self._load()
+
+    # ═════════════════════════════════════════════
+    # LOADING
+    # ═════════════════════════════════════════════
+
+    def _load_aliases(self) -> dict:
+        af = self.settings.ALIASES_FILE
+        try:
+            if Path(af).exists():
+                return json.loads(Path(af).read_text())
+        except Exception:
+            pass
+        return {}
+
+    def _load(self):
+        skills_dir = self.settings.SKILLS_DIR
+        loaded = 0
+        for mf in sorted(Path(skills_dir).rglob("manifest.json")):
+            try:
+                m = json.loads(mf.read_text())
+                self.skills.append(m)
+                loaded += 1
+            except Exception:
+                pass
+
+        if not self.skills:
+            log.warning("No manifests found")
+            return
+
+        self._build_index()
+        log.info(f"Router: loaded {loaded} skills")
+
+    def _build_index(self):
+        N = len(self.skills)
+        df = defaultdict(int)
+
+        self._docs = []
+        self._skill_tokens_cache = []
+
+        for skill in self.skills:
+            tokens = self._skill_tokens(skill)
+            self._skill_tokens_cache.append(tokens)
+
+            tf = defaultdict(int)
+            for t in tokens:
+                tf[t] += 1
+
+            max_tf = max(tf.values()) if tf else 1
+            tf_norm = {t: c / max_tf for t, c in tf.items()}
+            self._docs.append(tf_norm)
+
+            for t in set(tokens):
+                df[t] += 1
+
+
+===== BRAIN.PY =====
+"""
+JARVIS v2 — brain.py
+
+Multi-provider LLM layer — 7 free providers, one unified API.
+Every provider uses OpenAI-compatible endpoints, so one library
+handles all of them. No separate methods per provider.
+
+Fallback chain:
+  Groq → Cerebras → Gemini → Together → Mistral → OpenRouter → HuggingFace
+
+classify() uses Groq 8B (fastest) for routing decisions.
+"""
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import AsyncGenerator
+
+from openai import AsyncOpenAI
+
+log = logging.getLogger(__name__)
+
+
+class BrainClient:
+    """Unified LLM interface across 7 free providers."""
+
+    def __init__(self, settings):
+        self.settings = settings
+        self._clients: dict[str, AsyncOpenAI] = {}
+        self._usage_log = settings.MEMORY_DB.parent / "usage.log"
+        self._usage_log.parent.mkdir(parents=True, exist_ok=True)
+
+    def _client(self, name: str, base_url: str, api_key: str) -> AsyncOpenAI:
+        """Get or create a cached client. One per provider."""
+        if name not in self._clients:
+            self._clients[name] = AsyncOpenAI(
+                api_key=api_key,
+                base_url=base_url,
+            )
+        return self._clients[name]
+
+    # ═════════════════════════════════════════════
+    # PUBLIC API
+    # ═════════════════════════════════════════════
+
+    async def stream(self, messages: list) -> AsyncGenerator[str, None]:
+        """
+        Stream a response. Tries each provider in MODEL_CHAIN order.
+        Skips providers without API keys.
+        Yields string tokens as they arrive.
+        """
+        last_err = None
+
+        for name, base_url, key_attr, model in self.settings.MODEL_CHAIN:
+            api_key = getattr(self.settings, key_attr, "")
+            if not api_key:
+                continue
+
+            try:
+                client = self._client(name, base_url, api_key)
+                token_count = 0
+
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    stream=True,
+                )
+
+                async for chunk in response:
+                    content = chunk.choices[0].delta.content or ""
+                    if content:
+                        token_count += 1
+                        yield content
+
+                self._log_usage(name, model, token_count)
+                return
+
+            except Exception as e:
+                log.warning(f"[brain] {name}/{model} failed: {e}")
+                last_err = e
+                continue
+
+        # All providers failed — do NOT hallucinate
+        # Return explicit failure so caller can decide what to do
+        raise RuntimeError(
+            f"All LLM providers failed or rate-limited. Last error: {last_err}\n"
+            "Run the command manually with ! prefix (e.g. !subfinder -d target.com)"
+        )
+
+    async def complete(self, messages: list) -> str:
+        """Non-streaming complete. Returns full response string."""
+        parts = []
+        async for chunk in self.stream(messages):
+            parts.append(chunk)
+        return "".join(parts)
+
+    async def classify(self, query: str) -> dict:
+        """
+        Fast pre-classification using cheapest model (Groq 8B).
+        Returns: {intent, complexity, category_hint, needs_workflow}
+        Used by router to narrow skill search.
+        """
+        prompt = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a query classifier. Respond ONLY with valid JSON.\n"
+                    "Fields: intent (str), complexity (low/med/high), "
+                    "category_hint (one of: architecture/security/data-ai/"
+                    "development/infrastructure/testing/workflow/business/general), "
+                    "needs_workflow (bool)"
+                ),
+            },
+            {"role": "user", "content": f"Classify: {query}"},
+        ]
+
+        name, base_url, key_attr, model = self.settings.FAST_MODEL
+        api_key = getattr(self.settings, key_attr, "")
+
+        if not api_key:
+
+===== AVAILABLE JSON FILES =====
+./config/aliases.json
+./workflows/custom_vulnerability-scanner-security-auditor-brainstorming.json
+./workflows/deploy_cloud.json
+./workflows/custom_brainstorming-architecture-react-best-practices.json
+./workflows/saas_mvp.json
+./workflows/build_ai_agent.json
+./workflows/bug_bounty.json
+./workflows/bug_bounty_real.json
+./workflows/security_audit.json
+./reports/bounty_report_scanme.sh_20260329_015551.json
+./reports/bounty_report_target.com_20260329_015830.json
+./reports/bounty_report_google.com_20260327_170037.json
+./reports/bounty_report_example.com_20260329_015520.json
+./memory/bounty_scope.json
+./memory/target_context.json

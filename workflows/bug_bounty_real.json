@@ -1,0 +1,19 @@
+{
+  "name": "Real Bug Bounty Recon",
+  "description": "Runs actual tools — no LLM hallucination",
+  "triggers": [
+    "bug bounty",
+    "bounty recon",
+    "real recon",
+    "security audit",
+    "do a security audit",
+    "pentest",
+    "full audit"
+  ],
+  "steps": [
+    {"skill": "shell-recon", "label": "Subdomains"},
+    {"skill": "shell-headers", "label": "Headers"},
+    {"skill": "shell-ports", "label": "Ports"},
+    {"skill": "shell-nuclei", "label": "Vuln Scan"}
+  ]
+}

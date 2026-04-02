@@ -80,7 +80,12 @@ class BrainClient:
                 last_err = e
                 continue
 
-        raise RuntimeError(f"All 7 LLM providers failed. Last error: {last_err}")
+        # All providers failed — do NOT hallucinate
+        # Return explicit failure so caller can decide what to do
+        raise RuntimeError(
+            f"All LLM providers failed or rate-limited. Last error: {last_err}\n"
+            "Run the command manually with ! prefix (e.g. !subfinder -d target.com)"
+        )
 
     async def complete(self, messages: list) -> str:
         """Non-streaming complete. Returns full response string."""

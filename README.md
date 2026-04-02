@@ -1620,7 +1620,6 @@ You are free to:
 
 See [LICENSE](LICENSE) for full details.
 
-**MIT** — use it, modify it, sell it, build on it. No restrictions.
 
 ---
 

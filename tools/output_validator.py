@@ -1,81 +1,80 @@
 """
 JARVIS v2 — tools/output_validator.py
-Blocks hallucinated and fake exploit outputs.
+Prevents hallucinated outputs from reaching the user.
 """
 import re
 
 HALLUCINATION_PATTERNS = [
-    r"subdomain\d+\.target\.com",
-    r"api\.example\.com",
-    r"example\.com/api/",
     r"\[YOUR_TARGET\]",
     r"\[TARGET_DOMAIN\]",
     r"<target>",
-    r"placeholder",
+    r"\bplaceholder\b",
+    r"INSERT_.*_HERE",
+    r"YOUR_.*_HERE",
+    r"subdomain[123]\.",
+    r"93\.184\.216\.34",
+    r"192\.0\.2\.",
 ]
 
 FAKE_PHRASES = [
-    "example output",
-    "sample output",
-    "for example",
-    "hypothetical",
-    "simulated",
+    "for example, you might find",
+    "typical output would look like",
+    "the results would show",
+    "you could expect to see",
+    "here's what it might return",
+    "example output:",
+    "sample output:",
+    "simulated output",
+    "i'll submit a bug report",
+    "i have identified multiple vulnerabilities",
 ]
 
-def is_fake_exploit(output: str) -> bool:
-    patterns = [
-        r"requests\.post\(",
-        r"sqli_payload\s*=",
-        r"csrf_payload\s*=",
-        r"xss_payload\s*=",
-        r"# SQL Injection",
-        r"# CSRF",
-        r"# XSS",
-    ]
-    for p in patterns:
-        if re.search(p, output, re.IGNORECASE):
-            return True
-    
-    if "example api" in lower or "hypothetical" in lower:
-        return True
-    if "developer portal" in lower and "curl" in lower:
-        return True
+FAKE_EXECUTION_PATTERNS = [
+    r"Starting Nmap \d+\.\d+ \( https://nmap\.org \) at 20\d\d-\d\d-\d\d",
+    r"Nmap scan report for .+ \(\d+\.\d+\.\d+\.\d+\)",
+    r"Nmap done: \d+ IP address",
+    r"Nessus Scan Report",
+    r"nessus -i ",
+    r"burpsuite(\.jar)? ",
+    r"zap\.sh ",
+    r"I will (use|proceed|perform|conduct|run|execute|now) (the )?",
+    r"(Using|Performing|Running) (the )?(Nmap|Subfinder|Burp|Nessus|ZAP|nuclei)",
+    r"Next, I will",
+    r"I will proceed with",
+    r"Using the .+ tool to",
+    r"CVE-20(11|12|13|14|15|16|17|18|19|20)-\d{4}.*fake",
+    r"burpsuite --target",
+    r"Burp Suite (Configuration|Results|Scan):",
+]
 
+def is_fake_execution(output: str) -> bool:
+    for pattern in FAKE_EXECUTION_PATTERNS:
+        if re.search(pattern, output, re.IGNORECASE):
+            return True
     return False
 
 def is_hallucinated(output: str) -> bool:
     lower = output.lower()
-
     for pattern in HALLUCINATION_PATTERNS:
         if re.search(pattern, output, re.IGNORECASE):
             return True
-
     for phrase in FAKE_PHRASES:
         if phrase in lower:
             return True
-
-    if is_fake_exploit(output):
+    if is_fake_execution(output):
         return True
-
-    
-    if "example api" in lower or "hypothetical" in lower:
-        return True
-    if "developer portal" in lower and "curl" in lower:
-        return True
-
     return False
 
 def safe_llm_response(output: str) -> str:
     if not output or output.strip() == "":
-        return "(no output)"
-
+        return "(no output — command returned nothing)"
     if is_hallucinated(output):
         return (
-            "⚠ Blocked fake AI output.\n"
-            "Run real commands instead:\n"
+            "⚠ Blocked: LLM generated fake output instead of real results.\n\n"
+            "Run real commands with ! prefix:\n"
             "  !subfinder -d target.com\n"
-            "  !nmap -sV target.com\n"
             "  !curl -I https://target.com\n"
+            "  !nmap -sV --top-ports 100 target.com\n"
+            "  !nuclei -u https://target.com -severity medium,high,critical\n"
         )
-
     return output

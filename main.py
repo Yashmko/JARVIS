@@ -459,6 +459,70 @@ async def main_loop():
                 memory.add("user", query, skill="bounty-runner", outcome="success")
             continue
 
+        # ── URL FETCH (when user gives a URL) ───────────────────
+        import re as _urlre
+        _url_match = _urlre.search(r'https?://[^\s]+', query)
+        if _url_match and not is_raw_shell_command(query):
+            _url = _url_match.group(0).rstrip('.,)')
+            console.print(f"  [dim]Fetching: {_url}[/dim]\n")
+            try:
+                import asyncio as _asyncio2
+                # Try multiple user agents and get full content
+                _proc = await _asyncio2.create_subprocess_shell(
+                    f"curl -s -L --max-time 20 "
+                    f"-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' "
+                    f"-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' "
+                    f"-H 'Accept-Language: en-US,en;q=0.5' "
+                    f"'{_url}'",
+                    stdout=_asyncio2.subprocess.PIPE,
+                    stderr=_asyncio2.subprocess.PIPE,
+                )
+                _stdout, _ = await _asyncio2.wait_for(_proc.communicate(), timeout=25)
+                _raw = _stdout.decode(errors="replace")
+                import re as _re3
+                # Remove script and style blocks entirely
+                _text = _re3.sub(r"<script[^>]*>.*?</script>", " ", _raw, flags=_re3.DOTALL)
+                _text = _re3.sub(r"<style[^>]*>.*?</style>", " ", _text, flags=_re3.DOTALL)
+                # Extract code blocks before stripping tags
+                _code_blocks = _re3.findall(r"<code[^>]*>(.*?)</code>", _text, flags=_re3.DOTALL)
+                _pre_blocks = _re3.findall(r"<pre[^>]*>(.*?)</pre>", _text, flags=_re3.DOTALL)
+                # Strip remaining HTML
+                _text = _re3.sub(r"<[^>]+>", " ", _text)
+                _text = _re3.sub(r"\s+", " ", _text).strip()
+                # Add code blocks back clearly
+                _code_text = ""
+                for _cb in _code_blocks[:10]:
+                    _clean_cb = _re3.sub(r"<[^>]+>", "", _cb).strip()
+                    if _clean_cb:
+                        _code_text += f"\nCODE: {_clean_cb}\n"
+                for _pb in _pre_blocks[:5]:
+                    _clean_pb = _re3.sub(r"<[^>]+>", "", _pb).strip()
+                    if _clean_pb:
+                        _code_text += f"\nCOMMAND: {_clean_pb}\n"
+                _full_content = _text[:2000] + _code_text[:2000]
+                if len(_full_content.strip()) < 100:
+                    _full_content = _raw[:3000]  # fallback to raw if extraction failed
+                _fetch_msgs = [
+                    {"role": "system", "content": (
+                        settings.PERSONA +
+                        "\n\nIMPORTANT: You are on Arch Linux. "
+                        "Convert any Debian/Ubuntu/Kali commands (apt, apt-get) to Arch equivalents (pacman, yay). "
+                        "Convert pip installs to use --break-system-packages or venv. "
+                        "Give ONLY the actual commands to run, no fake output."
+                    )},
+                    {"role": "user", "content": (
+                        f"User request: {query}\n\n"
+                        f"Real page content from {_url}:\n{_full_content}\n\n"
+                        f"Extract the installation/setup steps from the page content above "
+                        f"and convert them for Arch Linux. Give exact commands to run."
+                    )}
+                ]
+                out = await stream_to_terminal(_fetch_msgs, brain)
+                memory.add("user", query, skill="url-fetch", outcome="success")
+            except Exception as _fe:
+                console.print(f"  [dim]Could not fetch URL: {_fe}[/dim]\n")
+            continue
+
         # ── RAW SHELL BYPASS ──────────────────────────────────
 
         # ── TARGET CONTEXT ────────────────────────────────────

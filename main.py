@@ -278,6 +278,56 @@ async def main_loop():
         except (KeyboardInterrupt,EOFError): console.print("\n  [dim]bye.[/dim]\n"); break
         query=query.strip(); q_low=query.lower()
         if not query: continue
+        # ── Kimi K2.5 direct modes (must be before router) ──────────
+        if q_low.startswith("kimi think:"):
+            prompt = query[11:].strip()
+            try:
+                from tools.kimi_swarm import get_kimi
+                kimi = get_kimi(settings)
+                console.print("  [bold cyan]🧠 Kimi K2.5 — Thinking Mode[/bold cyan]\n")
+                answer, reasoning = kimi.think(prompt)
+                if reasoning:
+                    console.print(f"  [dim]Reasoning trace: {reasoning[:300]}...[/dim]\n")
+                console.print(f"  {answer}\n")
+            except Exception as e:
+                console.print(f"  [red]Kimi error: {e}[/red]\n")
+            continue
+
+        if q_low.startswith("kimi agent:"):
+            prompt = query[11:].strip()
+            try:
+                from tools.kimi_swarm import get_kimi
+                kimi = get_kimi(settings)
+                console.print("  [bold yellow]🤖 Kimi K2.5 — Agent Mode (real shell)[/bold yellow]\n")
+                result = kimi.agent(prompt)
+                console.print(f"  {result}\n")
+            except Exception as e:
+                console.print(f"  [red]Kimi error: {e}[/red]\n")
+            continue
+
+        if q_low.startswith("kimi swarm:"):
+            prompt = query[11:].strip()
+            try:
+                from tools.kimi_swarm import get_kimi
+                kimi = get_kimi(settings)
+                console.print("  [bold magenta]🐝 Kimi K2.5 — SWARM Mode (100 parallel agents)[/bold magenta]\n")
+                result = kimi.swarm(prompt)
+                console.print(f"  {result}\n")
+            except Exception as e:
+                console.print(f"  [red]Kimi error: {e}[/red]\n")
+            continue
+
+        if q_low.startswith("kimi:"):
+            prompt = query[5:].strip()
+            try:
+                from tools.kimi_swarm import get_kimi
+                kimi = get_kimi(settings)
+                result = kimi.instant(prompt)
+                console.print(f"  {result}\n")
+            except Exception as e:
+                console.print(f"  [red]Kimi error: {e}[/red]\n")
+            continue
+
 
         if q_low in ("exit","quit","q"):
             console.print(Align.center(Text("\n  goodbye  \n",style="bold #f8fafc on #6d28d9"))); break

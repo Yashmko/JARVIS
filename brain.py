@@ -67,12 +67,18 @@ class BrainClient:
                 )
 
                 async for chunk in response:
-                    content = chunk.choices[0].delta.content or ""
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    content = delta.content or ""
+                    # Skip Kimi reasoning_content, only yield actual content
+                    reasoning = getattr(delta, "reasoning_content", None)
+                    if reasoning and not content:
+                        continue
                     if content:
                         token_count += 1
                         yield content
-
-                self._log_usage(name, model, token_count)
+                self.last_provider = name
                 return
 
             except Exception as e:

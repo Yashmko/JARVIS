@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).parent.parent
 
 class Settings:
     # ── API Keys ──────────────────────────────────
+    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
@@ -27,6 +28,18 @@ class Settings:
     # All use OpenAI-compatible endpoints — one library handles all 7
     # Order: fastest free tier first → slowest last
     MODEL_CHAIN = [
+        (
+            "kimi-k2.5",
+            "https://integrate.api.nvidia.com/v1",
+            "NVIDIA_API_KEY",
+            "moonshotai/kimi-k2.5",
+        ),
+        (
+            "kimi-k2",
+            "https://integrate.api.nvidia.com/v1",
+            "NVIDIA_API_KEY",
+            "moonshotai/kimi-k2",
+        ),
         (
             "groq",
             "https://api.groq.com/openai/v1",
@@ -73,6 +86,12 @@ class Settings:
 
     # ── Fast model for classify() — cheapest/fastest ──
     FAST_MODEL = (
+        "kimi-k2",
+        "https://integrate.api.nvidia.com/v1",
+        "NVIDIA_API_KEY",
+        "moonshotai/kimi-k2",
+    )
+    FAST_MODEL_BACKUP = (
         "groq",
         "https://api.groq.com/openai/v1",
         "GROQ_API_KEY",

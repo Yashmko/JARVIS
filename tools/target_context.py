@@ -26,6 +26,8 @@ class TargetContext:
 
     def set_target(self, target: str):
         target = re.sub(r'^https?://', '', target).strip().rstrip('/')
+        # Keep full subdomain — don't strip it
+        target = target.split('/')[0]  # remove paths but keep subdomains
         self._data["target"] = target
         if target not in self._data["history"]:
             self._data["history"].append(target)

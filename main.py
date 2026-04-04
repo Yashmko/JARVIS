@@ -257,7 +257,7 @@ async def main_loop():
     bounty=BountyToolkit(console,brain=brain); report_gen=ReportGenerator(console,memory)
     automation=AutomationTools(console); plugins=PluginManager(console,brain=brain,memory=memory)
     maint=MaintenanceTools(console,memory=memory); dash=Dashboard(console,memory,settings)
-    multi=MultiAgent(console)
+    multi=MultiAgent(console,brain,router,memory,settings,persona,stream_to_terminal,build_messages)
     browser=BrowserAutomation(console)
     autonomous=AutonomousAgent(console,brain,sys_ctrl,memory,settings,persona)
 
@@ -459,7 +459,7 @@ async def main_loop():
                 memory.add("user", query, skill="bounty-runner", outcome="success")
             continue
 
-        # ── URL FETCH (when user gives a URL) ───────────────────
+        # ── URL FETCH + AUTO EXECUTE ─────────────────────────────
         import re as _urlre
         _url_match = _urlre.search(r'https?://[^\s]+', query)
         if _url_match and not is_raw_shell_command(query):
@@ -467,12 +467,10 @@ async def main_loop():
             console.print(f"  [dim]Fetching: {_url}[/dim]\n")
             try:
                 import asyncio as _asyncio2
-                # Try multiple user agents and get full content
                 _proc = await _asyncio2.create_subprocess_shell(
                     f"curl -s -L --max-time 20 "
                     f"-H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' "
                     f"-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' "
-                    f"-H 'Accept-Language: en-US,en;q=0.5' "
                     f"'{_url}'",
                     stdout=_asyncio2.subprocess.PIPE,
                     stderr=_asyncio2.subprocess.PIPE,
@@ -480,16 +478,12 @@ async def main_loop():
                 _stdout, _ = await _asyncio2.wait_for(_proc.communicate(), timeout=25)
                 _raw = _stdout.decode(errors="replace")
                 import re as _re3
-                # Remove script and style blocks entirely
                 _text = _re3.sub(r"<script[^>]*>.*?</script>", " ", _raw, flags=_re3.DOTALL)
                 _text = _re3.sub(r"<style[^>]*>.*?</style>", " ", _text, flags=_re3.DOTALL)
-                # Extract code blocks before stripping tags
                 _code_blocks = _re3.findall(r"<code[^>]*>(.*?)</code>", _text, flags=_re3.DOTALL)
                 _pre_blocks = _re3.findall(r"<pre[^>]*>(.*?)</pre>", _text, flags=_re3.DOTALL)
-                # Strip remaining HTML
                 _text = _re3.sub(r"<[^>]+>", " ", _text)
                 _text = _re3.sub(r"\s+", " ", _text).strip()
-                # Add code blocks back clearly
                 _code_text = ""
                 for _cb in _code_blocks[:10]:
                     _clean_cb = _re3.sub(r"<[^>]+>", "", _cb).strip()
@@ -501,26 +495,150 @@ async def main_loop():
                         _code_text += f"\nCOMMAND: {_clean_pb}\n"
                 _full_content = _text[:2000] + _code_text[:2000]
                 if len(_full_content.strip()) < 100:
-                    _full_content = _raw[:3000]  # fallback to raw if extraction failed
+                    _full_content = _raw[:3000]
+
+                # Step 1: Get commands from LLM
                 _fetch_msgs = [
                     {"role": "system", "content": (
-                        settings.PERSONA +
-                        "\n\nIMPORTANT: You are on Arch Linux. "
-                        "Convert any Debian/Ubuntu/Kali commands (apt, apt-get) to Arch equivalents (pacman, yay). "
-                        "Convert pip installs to use --break-system-packages or venv. "
-                        "Give ONLY the actual commands to run, no fake output."
+                        "You extract shell commands from page content and output ONLY a numbered list of commands. "
+                        "You are on Arch Linux — convert apt/apt-get to pacman, pip to pip --break-system-packages or venv. "
+                        "Output ONLY the commands, one per line, no explanation, no markdown, no backticks. "
+                        "Format: just the raw command on each line."
                     )},
                     {"role": "user", "content": (
-                        f"User request: {query}\n\n"
-                        f"Real page content from {_url}:\n{_full_content}\n\n"
-                        f"Extract the installation/setup steps from the page content above "
-                        f"and convert them for Arch Linux. Give exact commands to run."
+                        f"Extract and convert to Arch Linux all install/setup commands from this page:\n{_full_content}"
                     )}
                 ]
-                out = await stream_to_terminal(_fetch_msgs, brain)
-                memory.add("user", query, skill="url-fetch", outcome="success")
+                _cmd_response = ""
+                async for _chunk in brain.stream(_fetch_msgs):
+                    _cmd_response += _chunk
+
+                # Step 2: Parse commands
+                _dangerous = ["rm -rf /", "mkfs", "dd if=/dev/zero", "shutdown", ":(){"]
+                _skip = ["#", "//", "http", "expected", "output", "result", "note:", "---"]
+                _commands = []
+                for _line in _cmd_response.splitlines():
+                    _l = _line.strip()
+                    # Remove numbering like "1." "2." etc
+                    _l = _re3.sub(r"^\d+\.\s*", "", _l).strip()
+                    # Remove backticks
+                    _l = _l.strip("`")
+                    if not _l:
+                        continue
+                    if any(_l.lower().startswith(s) for s in _skip):
+                        continue
+                    if any(d in _l for d in _dangerous):
+                        continue
+                    if len(_l) > 5:
+                        _commands.append(_l)
+
+                if not _commands:
+                    console.print("  [yellow]No executable commands found on page.[/yellow]\n")
+                    memory.add("user", query, skill="url-fetch", outcome="no-commands")
+                    continue
+
+                # Step 3: Show plan and confirm
+                console.print(f"  [bold #a78bfa]Found {len(_commands)} commands to run:[/bold #a78bfa]\n")
+                for _ci, _cmd in enumerate(_commands, 1):
+                    console.print(f"  [dim]{_ci}.[/dim] [#5eead4]{_cmd}[/#5eead4]")
+                console.print()
+                console.print("  [bold #f59e0b]Execute all? (yes/no/select):[/bold #f59e0b] ", end="")
+                _confirm = await asyncio.get_event_loop().run_in_executor(None, input)
+                _confirm = _confirm.strip().lower()
+
+                if _confirm in ("no", "n"):
+                    console.print("  [dim]Cancelled.[/dim]\n")
+                    memory.add("user", query, skill="url-fetch", outcome="cancelled")
+                    continue
+
+                # Fix common command issues before executing
+                _fixed_commands = []
+                for _cmd in _commands:
+                    # Add sudo to package managers
+                    if _cmd.startswith(("pacman ", "apt ", "apt-get ", "dnf ", "yum ")):
+                        _cmd = "sudo " + _cmd
+                    # Fix pip --break-system-packages position
+                    if "pip" in _cmd and "--break-system-packages" in _cmd:
+                        # correct form: pip install --break-system-packages <pkg>
+                        import re as _pre
+                        _cmd = _pre.sub(
+                            r"pip\s+(--break-system-packages\s+)?install\s+(--break-system-packages\s+)?",
+                            "pip install --break-system-packages ",
+                            _cmd
+                        )
+                    # Fix python -m pip --break-system-packages
+                    if "python -m pip" in _cmd and "--break-system-packages" in _cmd:
+                        _cmd = _cmd.replace("python -m pip --break-system-packages install", "pip install --break-system-packages")
+                        _cmd = _cmd.replace("python -m pip install --break-system-packages", "pip install --break-system-packages")
+                    _fixed_commands.append(_cmd)
+                _commands = _fixed_commands
+
+                # Step 4: Execute commands
+                _shell3 = ShellExecutor(console)
+                _failed = False
+                for _ci, _cmd in enumerate(_commands, 1):
+                    console.print(f"\n  [bold #f59e0b]Step {_ci}/{len(_commands)}:[/bold #f59e0b] [#5eead4]{_cmd}[/#5eead4]")
+
+                    # Handle cd specially — can't run in subprocess
+                    if _cmd.startswith("cd "):
+                        import os as _os
+                        _dir = _cmd[3:].strip()
+                        try:
+                            _os.chdir(_dir)
+                            console.print(f"  [#10b981]✓ Changed to {_os.getcwd()}[/#10b981]")
+                        except Exception as _cde:
+                            console.print(f"  [#ef4444]✗ cd failed: {_cde}[/#ef4444]")
+                        continue
+
+                    # Handle source specially
+                    if _cmd.startswith("source "):
+                        _src = _cmd[7:].strip()
+                        console.print(f"  [dim]Note: run 'source {_src}' manually in your shell after this.[/dim]")
+                        continue
+
+                    # Verify git clone URLs exist before running
+                    if _cmd.startswith("git clone "):
+                        import re as _gcre
+                        _repo_url = _gcre.search(r'https://github\.com/[^\s]+', _cmd)
+                        if _repo_url:
+                            _ru = _repo_url.group(0).rstrip('/')
+                            _check = await _asyncio2.create_subprocess_shell(
+                                f"curl -s -o /dev/null -w '%{{http_code}}' {_ru}",
+                                stdout=_asyncio2.subprocess.PIPE,
+                                stderr=_asyncio2.subprocess.PIPE,
+                            )
+                            _cout, _ = await _asyncio2.wait_for(_check.communicate(), timeout=10)
+                            _status = _cout.decode().strip()
+                            if _status == "404":
+                                console.print(f"  [yellow]⚠ Repo not found: {_ru}[/yellow]")
+                                console.print(f"  [dim]Searching for correct repo...[/dim]")
+                                _repo_name = _ru.split("/")[-1]
+                                _search = await _asyncio2.create_subprocess_shell(
+                                    f"curl -s 'https://api.github.com/search/repositories?q={_repo_name}&sort=stars' | python3 -c \"import json,sys; r=json.load(sys.stdin); [print(i['clone_url'], i['stargazers_count'], 'stars') for i in r.get('items',[])[:3]]\"",
+                                    stdout=_asyncio2.subprocess.PIPE,
+                                    stderr=_asyncio2.subprocess.PIPE,
+                                )
+                                _sout, _ = await _asyncio2.wait_for(_search.communicate(), timeout=15)
+                                _suggestions = _sout.decode().strip()
+                                if _suggestions:
+                                    console.print(f"  [#5eead4]Alternatives found:[/#5eead4]\n{_suggestions}")
+                                console.print(f"  [dim]Skipping bad clone URL.[/dim]\n")
+                                continue
+                    _result = await _shell3.execute("!" + _cmd, timeout=120)
+                    if not _result.success and _result.returncode not in (0, None):
+                        console.print(f"  [#ef4444]✗ Step {_ci} failed (exit {_result.returncode})[/#ef4444]")
+                        console.print("  [bold #f59e0b]Continue anyway? (yes/no):[/bold #f59e0b] ", end="")
+                        _cont = await asyncio.get_event_loop().run_in_executor(None, input)
+                        if _cont.strip().lower() in ("no", "n"):
+                            _failed = True
+                            break
+
+                if not _failed:
+                    console.print(f"\n  [bold #10b981]✓ All {len(_commands)} steps completed![/bold #10b981]\n")
+                memory.add("user", query, skill="url-fetch", outcome="executed")
+
             except Exception as _fe:
-                console.print(f"  [dim]Could not fetch URL: {_fe}[/dim]\n")
+                console.print(f"  [dim]Error: {_fe}[/dim]\n")
             continue
 
         # ── RAW SHELL BYPASS ──────────────────────────────────

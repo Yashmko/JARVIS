@@ -1,9 +1,11 @@
 {
-  "target": "kalilinuxtutorials.com",
+  "target": "vulnweb.com",
   "scope": [],
   "history": [
     "tesla.com",
     "google.com",
-    "kalilinuxtutorials.com"
+    "kalilinuxtutorials.com",
+    "vulnweb.com",
+    "testphp.vulnweb.com"
   ]
 }
